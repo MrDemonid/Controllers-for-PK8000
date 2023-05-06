@@ -1,0 +1,79 @@
+NDISK           equ 12           ; макс. количество подключаемых дисков
+BIOS_SIZE       equ 1015         ; размер модуля BIOS
+SYS_SIZE        equ 5632         ; размер модулей BDOS и CCP (cpm.sys)
+
+SLAVE_ENABLE    equ 0            ; вкл/выкл поиск устройств slave
+CHECK_MEM       equ 1            ; вкл/выкл проверку памяти
+
+BIOS_ADDR       equ 0DA00h
+CCP_ADDR        equ BIOS_ADDR-SYS_SIZE
+
+
+DPHADDR         equ (0DA00h+17*3)
+DPBADDR         equ DPHADDR+(NDISK*16)
+
+
+
+HDD_FUNC_TABLE  SET 4008h
+HDD_CUR_FUNC    SET HDD_FUNC_TABLE
+
+SVFUNC macro name
+  name  equ HDD_CUR_FUNC
+  HDD_CUR_FUNC SET HDD_CUR_FUNC+3
+endm
+
+
+
+
+;========================================================================
+; Экспортируемые из ПЗУ функции
+;========================================================================
+
+; выбор текущего логического диска
+; на входе:
+;    A          - номер логического диска [0..numDisks-1]
+;    HL         - указатель на структуру DPH
+SVFUNC SV_SELDISK
+
+; выбор адреса для последующей операции чтения/записи
+; на входе:
+;       DE      - логический сектор [1..xxxx]
+;       HL      - логическая дорожка
+SVFUNC SV_SETADDRESS
+
+; Чтение сектора
+; на входе:
+;    HL         - буфер для чтения (128 байт)
+; на выходе:
+;    A          - 0: нормальное завершение
+;                 1: ошибка
+SVFUNC SV_READSECTOR
+
+; Запись сектора
+; на входе:
+;    HL         - буфер с данными (128 байт)
+; на выходе:
+;    A          - 0: нормальное завершение
+;                 1: ошибка
+SVFUNC SV_WRITESECTOR
+
+; кеширование сектора
+; на входе:
+;    HL
+SVFUNC SV_CACHESECTOR
+
+; загружает модули BDOS и CPP из ПЗУ в память
+SVFUNC SV_LOADBDOS
+
+; Чтение символа с консоли
+; на выходе:
+;    A          - символ
+SVFUNC SV_CONINPUT
+
+; Вывод символа на консоль
+; на входе:
+;    A          - символ
+SVFUNC SV_CONOUTPUT
+
+; инициализация переменных подпрограмм ПЗУ
+SVFUNC SV_RESETDATA

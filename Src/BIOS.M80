@@ -1,0 +1,545 @@
+;*****************************************************************************
+;*                                                                           *
+;* BIOS for CP/M                                                             *
+;* Copyright (C) 2019 Andrey Hlus                                            *
+;*                                                                           *
+;*****************************************************************************
+ASEG
+
+;;========================================================================
+;;                                BIOS
+;;========================================================================
+
+include const.i80
+
+
+        ORG 0DA00h
+
+        jmp     bios_BOOT
+WARMBOOT:
+        jmp     bios_WBOOT
+        jmp     bios_CONST
+        jmp     bios_CONIN
+        jmp     bios_CONOUT
+        jmp     bios_LIST
+        jmp     bios_PUNCH
+        jmp     bios_READER
+        jmp     bios_HOME
+        jmp     bios_SELDISK
+        jmp     bios_SETTRK
+        jmp     bios_SETSEC
+        jmp     bios_SETDMA
+        jmp     bios_READ
+        jmp     bios_WRITE
+        jmp     bios_LISTST
+        jmp     bios_SECTRANSLATE
+
+
+        ORG     DPHADDR
+
+        DPBA SET DPB
+DPH:
+    REPT NDISK
+        dw 0                    ; XLT
+        dw 0,0,0
+        dw DIRBUF
+        dw DPBA
+        dw 0                    ; CVS
+        dw 0                    ; size is DSM/8
+        DPBA SET DPBA+16
+    ENDM
+DPB:    ds NDISK*16             ; параметры дисков
+
+;========================================================================
+; function 0: Холодный старт.
+;   - Устанавливается IOBYTE
+;   - диск A
+;   - печатается заставка CP/M
+;   - управление передается WBOOT.
+;========================================================================
+bios_BOOT:
+        lxi     sp, CCP_ADDR
+        lda     callMap
+        out     80h
+        call    bios_SetupScreen
+        ; выводим копирайт
+        lxi     H, szCopyright
+        mvi     A, 2
+        lxi     B, 50h
+        call    call_BIOS
+        jmp     bios_Init
+
+  szCopyright:  db "CP/M 2.2", 13, 10, 0
+
+;========================================================================
+; function 1: Горячий старт.
+;   - из ПЗУ перегружаются BDOS и CCP
+;   - по адресу 0 помещается команда JP bios+3 (WBOOT)
+;   - по адресу 5 помещается команда JP BDOS.
+;   - в регистр С помещается номер активного диска
+;   - управление передается ССР.
+;========================================================================
+bios_WBOOT:
+        lxi     sp, CCP_ADDR
+bios_Init:
+        mvi     a, 2
+        out     88h             ; цвет текста и фона
+        lxi     B, SV_LOADBDOS  ; подгружаем из ПЗУ BDOS и CPP
+        call    call_BIOS
+        lxi     B, SV_RESETDATA
+        call    call_BIOS
+        mvi     C, 0
+        call    bios_SELDISK
+        call    bios_HOME       ; bios_SETTRK (0x00)
+        lxi     B, 1
+        call    bios_SETSEC
+        lxi     B, 80h
+        call    bios_SETDMA
+        ;
+        di
+        mvi     a, 0FFh         ; доступна вся ОЗУ
+        out     80h
+        ; формируем PSP
+        xra     A
+        sta     3               ; set IOByte
+        sta     4               ; set cur disk & user
+        mvi     A, 0C3h         ; cmd JMP
+        sta     0
+        lxi     H, WARMBOOT
+        shld    1               ; rst 0: jmp WARMBOOT
+        sta     5
+        lxi     H, 0CC06h
+        shld    6               ; 0x0005: jmp BDOS
+        lxi     H, bios_RST7
+        sta     38h
+        shld    39h             ; rst 7: jmp RST7
+        sta     20h
+        lxi     H, ptr_IsEqu
+        shld    21h             ; rst 4: jmp ptr_IsEqu
+        lxi     H, 0
+        sta     8
+        shld    9               ; rst 1: jmp rst 0
+        sta     10h
+        shld    11h             ; rst 2: jmp rst 0
+        sta     18h
+        shld    19h             ; rst 3: jmp rst 0
+        sta     28h
+        shld    29h             ; rst 5: jmp rst 0
+        sta     30h
+        shld    31h             ; rst 6: jmp rst 0
+        mvi     a, 0C9h         ;
+        sta     0F86Eh          ; 0xF86E: ret  // user timer func
+        ei
+        ; уходим на CCP
+        lda     4
+        mov     C, A
+        jmp     CCP_ADDR        ; jmp CPP
+
+
+;========================================================================
+; function 2: Запрос статуса консоли.
+; на выходе:
+;    A          - 00: нет символа
+;                 FF: в буфере есть символ
+;========================================================================
+bios_CONST:
+        push    H
+        push    D
+        lhld    0FA2Ch          ; адрес чтения из буфера клавиатуры
+        xchg
+        lhld    0FA2Ah          ; адрес записи в буфере клавиатуры
+        call    ptr_IsEqu
+        pop     D
+        pop     H
+        mvi     A, 0
+        rz                      ; if (buff is EMPTY) return 0
+        cma                     ; else return 0xFF
+        ret
+
+; сравнивает два указателя на равенство
+; на входе:
+;     DE, HL - два указателя
+; на выходе:
+;     Z - 0: указатели не равны
+;         1: указатели равны
+
+ptr_IsEqu:
+        mov     A, H
+        sub     D               ; A = H - D
+        rnz                     ; if (H > D) then EXIT
+        mov     A, L
+        sub     E               ; A = L - E
+        ret
+
+;========================================================================
+; function 3: Чтение символа с консоли.
+; на выходе:
+;    A          - введенный символ
+;========================================================================
+bios_CONIN:
+        lxi     B, SV_CONINPUT
+        call    call_BIOS
+        ret
+
+;========================================================================
+; function 4: Вывод символа на консоль.
+; на входе:
+;    C          - выводимый символ
+; прим.: обрабатывает последовательности <ESC>:
+;    <ESC>A - перемещение курсора вверх на строку
+;    <ESC>B - перемещение курсора вниз на строку
+;    <ESC>C - перемещение курсора вправо на знакоместо
+;    <ESC>D - перемещение курсора влево на знакоместо
+;    <ESC>E - очистка экрана и перемещение курсора в 0,0
+;    <ESC>H - перемещение курсора в 0,0
+;    <ESC>Y<y><x> - прямое позиционирование курсора
+;========================================================================
+bios_CONOUT:
+        mov     A, C
+        lxi     B, SV_CONOUTPUT
+        call    call_BIOS
+        ret
+
+;========================================================================
+; function 5: Вывод символа на принтер.
+; на входе:
+;    C          - символ
+;========================================================================
+bios_LIST:
+        mov     A, C
+        lxi     B, 17Ch
+        call    call_BIOS
+        ret
+
+
+;========================================================================
+; function 6: Вывод символа на перфоратор (магнитофон).
+; на входе:
+;    C          - символ
+;========================================================================
+bios_PUNCH:
+        mov     A, C
+        di
+        lxi     B, 365Bh
+        call    call_BIOS
+        ei
+        ret
+
+
+
+;========================================================================
+; function 7: Чтение символа с перфоленты.
+; на выходе:
+;    A          - считанный символ
+;========================================================================
+bios_READER:
+        di
+        lxi     B, 3710h
+        call    call_BIOS
+        ei
+        rnc
+        mvi     A, 1Ah
+        ret
+
+;========================================================================
+; function 8: Позиционирование текущего выбранного диска на 0 дорожку
+;========================================================================
+bios_HOME:
+        lxi     B, 0
+        jmp     bios_SETTRK
+
+
+;========================================================================
+; function 9: Выбор диска.
+; на входе:
+;    C          - номер диска: 0 - A, 1 - B, и тд.
+; на выходе:
+;    HL         - адрес таблицы DPH, или 0 если диск отсутствует
+;========================================================================
+bios_SELDISK:
+        ; сбрасываем кэш
+        lxi     H, 0FFFFh
+        shld    cacheRD+0
+        shld    cacheRD+2
+        shld    cacheWR+0
+        shld    cacheWR+2
+        ; назначаем активный диск
+        mov     A, C
+        lxi     H, DPH
+        lxi     B, SV_SELDISK   ; назначаем активный диск
+        call    call_BIOS
+        ret
+
+;========================================================================
+; function 0A: Установить дорожку.
+; на входе:
+;    BC         - номер дорожки (от 0)
+;========================================================================
+bios_SETTRK:
+        mov     L, C
+        mov     H, B
+        shld    logTrack
+        ret
+
+;========================================================================
+; function 0B: Установить сектор.
+; на входе:
+;    BC         - номер сектора (от 1)
+;========================================================================
+bios_SETSEC:
+        mov     L, C
+        mov     H, B
+        shld    logSector
+        ret
+
+
+;========================================================================
+; function 0C: Установить адрес буфера для обмена с диском.
+; на входе:
+;    BC         - адрес буфера
+;========================================================================
+bios_SETDMA:
+        mov     L, C
+        mov     H, B
+        shld    curDMA
+        ret
+
+;========================================================================
+; function 0D: Чтение сектора.
+; на входе:
+;    определено ранее вызовами SELDSK, SETTRK, SETSEC и SETDMA
+; на выходе:
+;    A          - 0: успешное завершение
+;                 1: ошибка чтения (после нескольких попыток)
+;========================================================================
+bios_READ:
+        ; транслируем логический адрес в абсолютный
+        lhld    logSector
+        xchg
+        lhld    logTrack
+        lxi     B, SV_SETADDRESS
+        call    call_BIOS
+        ; подгружаем сектор в кэш
+        lxi     D, cacheRD
+        lxi     H, buffRD
+        lxi     B, SV_CACHESECTOR
+        call    call_BIOS
+        ora     A
+        rnz
+        ; извлекаем из кэша данные
+        lhld    logSector
+        lxi     D, buffRD
+        call    calck_Offs      ; DE = buffRD[((logSector-1) & 3) * 128]
+        lhld    curDMA
+        xchg
+        lxi     B, 128
+        call    memcpy
+        xra     A
+        ret
+
+
+;========================================================================
+; function 0E: Запись сектора.
+; на входе:
+;    C          - тип сектора:
+;                   0: обычный сектор
+;                   1: из области директория
+;                   2: первый сектор нового блока
+;    остальное определено ранее вызовами SELDSK, SETTRK, SETSEC и SETDMA
+; на выходе:
+;    A          - 0: успешное завершение
+;                 1: ошибка записи (после нескольких попыток)
+;========================================================================
+bios_WRITE:
+        ; транслируем логический адрес в абсолютный
+        lhld    logSector
+        xchg
+        lhld    logTrack
+        lxi     B, SV_SETADDRESS
+        call    call_BIOS
+        ; подгружаем сектор в кэш
+        lxi     D, cacheWR
+        lxi     H, buffWR
+        lxi     B, SV_CACHESECTOR
+        call    call_BIOS
+        ora     A
+        rnz
+        ; заносим в него данные
+        lhld    logSector
+        lxi     D, buffWR
+        call    calck_Offs    ; DE = buffWR[((logSector-1) & 3) * 128]
+        lhld    curDMA
+        lxi     B, 128
+        call    memcpy
+        ; и отправляем на диск
+        lxi     H, buffWR
+        lxi     B, SV_WRITESECTOR
+        call    call_BIOS
+        ret
+
+
+; вычисляет смещение 128-байтного сектора в 512-байтном
+; на входе:
+;    HL         - номер логического сектора (от 1)
+;    DE         - адрес буфера
+; на выходе:
+;    DE         - адрес требуемого сектора в буфере
+calck_Offs:
+        dcx     H               ; logSector--
+        mov     A, L
+        ani     11b             ; +clear carry
+        rar
+        mov     H, A
+        mvi     A, 0
+        rar
+        mov     L, A            ; HL = ((logSector-1) & 3) * 128
+        dad     D
+        xchg                    ; DE = buff[ ((logSector-1) & 3) * 128 ]
+        ret
+
+
+
+;========================================================================
+; function 0F: Запрос статуса принтера.
+; на входе:
+; на выходе:
+;    A          - 00: принтер не готов
+;                 FF: принтер готов к выводу символа
+;========================================================================
+bios_LISTST:
+        in      86h
+        ani     4
+        mvi     A, 0
+        rz
+        cma
+        ret
+
+
+;========================================================================
+; function 10: Трансляция логического номера сектора в физический.
+; на входе:
+;    BC         - номер сектора (от 0)
+;    DE         - адрес таблицы перекодировки (поле XLT из DPH)
+; на выходе:
+;    HL         - номер физического сектора (от 1)
+;========================================================================
+bios_SECTRANSLATE:
+        mov     H, B
+        mov     L, C
+        inx     H
+        ret
+
+
+;========================================================================
+; Выполняет переход в BIOS на обработчик RST 7
+;========================================================================
+bios_RST7:
+        push    PSW
+        shld    retAddr
+        lxi     H, 0
+        dad     SP
+        shld    savedSP2
+        lxi     SP, 0FFFEh
+        in      80h
+        push    PSW
+        lda     callMap         ; "включаем" ПЗУ и СЛОТ(1 или 2)
+        out     80h
+        call    38h
+        pop     PSW
+        lhld    savedSP2
+        sphl
+        out     80h
+        lhld    retAddr         ; HL - адрес возврата
+        pop     PSW
+        ret
+
+
+
+
+; на входе:
+;     A - параметр
+;     HL - параметр
+;     BC - адрес вызываемой функции BIOS
+call_BIOS:
+        sta     savedA          ; savedA = A
+        in      80h
+        sta     savedMap        ; savedMap = in[80h]
+        shld    savedHL         ; savedHL = HL
+        lxi     H, 0
+        dad     SP              ; HL = SP
+        shld    savedSP
+        lxi     SP, savedHL     ; SP = &savedSP
+        lda     callMap         ; "включаем" ПЗУ и СЛОТ(1 или 2)
+        out     80h
+        lda     savedA          ; A = savedA
+        lxi     H, return_BIOS  ; HL - адрес возврата
+        xthl                    ; SP = &return_BIOS
+                                ; HL = savedHL
+        push    B
+        ret
+
+; точка возврата из функции BIOS в CP/M
+return_BIOS:
+        push    PSW
+        lda     savedMap        ; restore map mem
+        out     80h
+        pop     PSW
+        push    H               ; restore stack
+        lhld    savedSP
+        sphl
+        lhld    savedHL
+        ret
+
+; настраиваем экран
+bios_SetupScreen:
+        lxi     H, 3800h        ; таблица знакогенератора для режимов 0 и 1
+        lxi     D, 0F000h
+        lxi     B, 2048
+        call    5Ch
+        lxi     H, 0E000h
+        shld    0FA05h          ; E000: буфер экрана
+        lxi     H, 0F000h
+        shld    0FA09h          ; F000: знакогенератор
+        mvi     A, 0Ch
+        call    3Bh             ; clear screen
+        di
+        lda     0FA06h          ; A = HI(адрес буфера экрана)
+        rrc
+        rrc
+        out     90h
+        lda     0FA0Ah          ; A = HI(адрес знакогенератора)
+        rrc
+        rrc
+        out     91h
+        in      84h
+        ori     0C0h
+        out     84h             ; видеопамять в старшие адреса (C000h)
+        xra     a
+        sta     0FA29h
+        ei
+        mvi     A, 40
+        call    0AAh            ; WIDTH 40
+        ret
+
+; [HL] -> [DE], with BC count
+memcpy:
+        mov     A, M
+        stax    D               ; [DE] = [HL]
+        inx     H               ; HL++
+        inx     D               ; DE++
+        dcx     B
+        mov     A, B
+        ora     C
+        jnz     memcpy          ; while (BC != 0)
+        ret
+
+
+ENDBIOS:        ; метка конца модуля
+
+;=============================================================================
+; данные модуля
+;=============================================================================
+
+include data.i80
+
+END

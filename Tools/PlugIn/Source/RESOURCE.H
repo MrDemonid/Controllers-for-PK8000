@@ -1,0 +1,14 @@
+#define IDI_APPICON                     104
+
+#define IDS_DESCRIPTION                 5
+
+#define IDD_DIALOG 1000
+#define IDC_LSTIMAGES 1001
+#define IDC_STC1 1002
+#define IDC_BTNINSERT 1003
+#define IDC_BTNDELETE 1004
+#define IDC_CHKLOG 1005
+#define IDC_CHKFIXED 1006
+#define IDC_CHKREMOVABLE 1009
+#define IDC_BTNOK 1007
+#define IDC_BTNCANCEL 1008

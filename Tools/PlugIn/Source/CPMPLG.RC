@@ -1,0 +1,87 @@
+#include "resource.h"
+
+#include "windows.h"
+#include "winver.h"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+IDI_APPICON             ICON    DISCARDABLE     "cpmplg.ico"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE DISCARDABLE
+BEGIN
+    IDS_DESCRIPTION         "яспю ой8000 CP/M Plugin"
+END
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog config plugin
+//
+
+IDD_DIALOG DIALOGEX 6,5,343,132
+CAPTION "PK8000 HDD - Plugin properties"
+FONT 8,"MS Sans Serif",0,0,0
+STYLE WS_VISIBLE|WS_OVERLAPPEDWINDOW
+BEGIN
+  CONTROL "",IDC_LSTIMAGES,"ListBox",WS_CHILD|WS_VISIBLE|WS_TABSTOP|LBS_NOINTEGRALHEIGHT|LBS_HASSTRINGS|LBS_NOTIFY,2,12,264,98,WS_EX_CLIENTEDGE
+  CONTROL "Files of images HDD with CP/M system",IDC_STC1,"Static",WS_CHILD|WS_VISIBLE,2,1,214,9
+  CONTROL "Insert",IDC_BTNINSERT,"Button",WS_CHILD|WS_VISIBLE|WS_TABSTOP,268,70,74,17
+  CONTROL "Delete",IDC_BTNDELETE,"Button",WS_CHILD|WS_VISIBLE|WS_TABSTOP,268,92,74,17
+  CONTROL "Enable log",IDC_CHKLOG,"Button",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_AUTOCHECKBOX,230,114,48,15
+  CONTROL "Enable find in fixed disks",IDC_CHKFIXED,"Button",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_AUTOCHECKBOX,8,114,92,15
+  CONTROL "Enable find in removable disks",IDC_CHKREMOVABLE,"Button",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_AUTOCHECKBOX,110,114,110,15
+  CONTROL "Ok",IDC_BTNOK,"Button",WS_CHILD|WS_VISIBLE|WS_TABSTOP,268,12,74,17
+  CONTROL "Cancel",IDC_BTNCANCEL,"Button",WS_CHILD|WS_VISIBLE|WS_TABSTOP,268,35,74,17
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 4,0,0,0
+ PRODUCTVERSION 4,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0xbL
+#else
+ FILEFLAGS 0xaL
+#endif
+ FILEOS 0x10001L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904e4"
+        BEGIN
+            VALUE "CompanyName", "AndNot (aka DemonId7, aka MsDemonId)\0"
+            VALUE "FileDescription", "Total Commander plugin HDD PK8000 for CP/M hard drive\0"
+            VALUE "FileVersion", "Version 4.0\0"
+            VALUE "InternalName", "CPMPLG\0"
+            VALUE "LegalCopyright", "Copyright \251 2014\0"
+            VALUE "LegalTrademarks", "Microsoft\256 is a registered trademark of Microsoft Corporation. Windows(TM) is a trademark of Microsoft Corporation\0"
+            VALUE "OriginalFilename", "CPMPLG.DLL\0"
+            VALUE "ProductName", "PK8000 CP/M Plugin TC\0"
+            VALUE "ProductVersion", "Version 4.0\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1252
+    END
+END
+
