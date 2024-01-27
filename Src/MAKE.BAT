@@ -12,7 +12,7 @@ if errorlevel == 1 goto error
 if errorlevel == 1 goto error
 
 @echo off
-copy /b boot.com+cpm.sys+bios.com ..\ROM\pk8000_hdd.bin
+copy /b boot.com+cpm.fdd+bios.com ..\ROM\pk8000_hdd.bin
 rem for original MDOS 1.0 uncomment the line below
 rem copy /b boot.com+cpm.fdd+bios.com ..\ROM\pk8000_hdd.bin
 
